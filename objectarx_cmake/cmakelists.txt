@@ -1,0 +1,89 @@
+cmake_minimum_required(VERSION 3.16)
+
+# 1. 项目名称与语言
+project(MyArxProject CXX)
+
+# 2. 用户配置区域（根据你的实际环境修改）
+set(ARX_SDK_PATH "C:/Autodesk/ObjectARX_for_AutoCAD_2024_Win_64bit_dlm" CACHE PATH "Path to ObjectARX SDK")
+set(AUTOCAD_VERSION "24" CACHE STRING "AutoCAD Target Version")
+
+# 3. 强制要求 64 位编译并设置 C++ 标准
+if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    message(FATAL_ERROR "ObjectARX requires a 64-bit compiler (x64). Please switch your CMake generator.")
+endif()
+
+# 根据 AutoCAD 版本选择 C++ 标准（较新版本通常需要 C++17 或 C++20）
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# if(MSVC)
+#     # /W4: 开启4级警告
+#     # /MP: 开启多核并行编译（大幅提升编译速度）
+#     # /utf-8: 强制源文件和执行文件使用 UTF-8 编码
+#     add_compile_options(/W4 /MP /utf-8)
+# endif()
+
+
+
+# 5. 收集源文件
+file(GLOB_RECURSE SOURCE_FILES 
+    "src/*.cpp"
+    "inc/*.h"
+)
+# 6. 创建动态链接库 (ARX 本质上是修改了后缀的 DLL)
+add_library(${PROJECT_NAME} SHARED ${SOURCE_FILES})
+
+
+# 显式地将头文件目录绑定到这个目标上
+target_include_directories(${PROJECT_NAME}  PRIVATE 
+    "${ARX_SDK_PATH}/inc"
+    "${ARX_SDK_PATH}/inc-x64"
+    ./inc
+)
+
+# 7. 修改输出后缀为 .arx
+set_target_properties(${PROJECT_NAME} PROPERTIES 
+    PREFIX ""
+    SUFFIX ".arx"
+)
+
+# 8. 核心宏定义 (ObjectARX 必需)
+# _ACRXAPP 表明这是一个 ARX 程序，ACRXAPP_EXPORT 用于导出入口函数
+target_compile_definitions(${PROJECT_NAME} PRIVATE
+    _ACRXAPP
+    ACRXAPP_EXPORT
+    _CRT_SECURE_NO_WARNINGS
+    UNICODE
+    _UNICODE
+)
+target_link_directories(MyArxProject PRIVATE 
+    "${ARX_SDK_PATH}/lib-x64"
+)
+
+
+ 
+# 9. 查找并链接 ObjectARX 核心库  AcPal.lib
+set(ARX_LIBS
+    ${ARX_SDK_PATH}/lib-x64/rxapi.lib
+    ${ARX_SDK_PATH}/lib-x64/acad.lib
+    ${ARX_SDK_PATH}/lib-x64/AcPal.lib
+    ${ARX_SDK_PATH}/lib-x64/accore.lib
+    ${ARX_SDK_PATH}/lib-x64/acge${AUTOCAD_VERSION}.lib
+    ${ARX_SDK_PATH}/lib-x64/acdb${AUTOCAD_VERSION}.lib
+    
+)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE ${ARX_LIBS})
+
+# 10. 针对 MSVC 的特殊配置（移除默认的 DLL 入口，由 ARX 自己控制，arx是一个辅助程序，告诉编译这不是一个窗口或者控制台）
+if(MSVC)
+    target_link_options(${PROJECT_NAME} PRIVATE "/subsystem:windows" /NODEFAULTLIB:msvcrt.lib)
+    target_compile_options(${PROJECT_NAME} PRIVATE /MDd  /utf-8)
+endif()
+
+
+set_target_properties(${PROJECT_NAME} PROPERTIES 
+    PREFIX ""
+    SUFFIX ".arx"
+    DEBUG_SUFFIX "d.arx"   # Debug 模式下生成的文件名会是 MyArxPlugind.arx
+)
